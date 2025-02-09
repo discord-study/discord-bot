@@ -1,0 +1,30 @@
+server:
+  port: 2333
+
+lavalink:
+  server:
+    password: "1235"  # 봇과 연결할 때 사용할 비밀번호
+    sources:
+      youtube: true
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+    bufferDurationMs: 400
+    youtubePlaylistLoadLimit: 6
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+
+metrics:
+  prometheus:
+    enabled: false
+  cpu:
+    enabled: false
+
+logging:
+  file:
+    enabled: false
+  level:
+    root: INFO
