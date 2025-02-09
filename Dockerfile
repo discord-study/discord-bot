@@ -1,4 +1,4 @@
-FROM dtcooper/raspberrypi-os:python3.11-bullseye
+FROM arm64v8/python:3.11
 WORKDIR /app
 
 COPY requirements.txt .
