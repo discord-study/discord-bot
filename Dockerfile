@@ -1,4 +1,4 @@
-FROM arm64v8/python:3.10-bullseye
+FROM --platform=linux/arm64/v8 arm64v8/python:3.10-bullseye
 WORKDIR /app
 
 COPY requirements.txt .
