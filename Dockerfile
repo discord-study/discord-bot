@@ -1,4 +1,4 @@
-FROM --platform=linux/arm64 amd64/python:3.11
+FROM arm64v8/python:3.11
 WORKDIR /app
 
 COPY requirements.txt .
