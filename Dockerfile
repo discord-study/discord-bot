@@ -1,4 +1,4 @@
-FROM arm64v8/python:3.11
+FROM arm64v8/python:3.11 as build
 WORKDIR /app
 
 COPY requirements.txt .
