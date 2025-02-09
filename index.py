@@ -1,8 +1,14 @@
 import logging
 import discord
 from discord.ext import commands
-from config import DISCORD_TOKEN, DISCORD_CHANNEL_ID
+import os
+from dotenv import load_dotenv
 from twitter import init_twitter, start_tweet_loop
+
+# 환경 변수 로드
+load_dotenv()
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -32,6 +38,16 @@ async def on_ready():
         logging.exception("❌ Twitter 초기화 실패, 봇을 종료합니다.")
         await bot.close()
 
+################ Ping-Pong 명령어 추가 #######################
+##############################################################
+##############################################################
+@bot.command()
+async def ping(ctx):
+    """Ping을 입력하면 Pong!과 응답 속도를 반환합니다."""
+    latency = round(bot.latency * 1000)  # 밀리초 단위 변환
+    await ctx.send(f"Pong! 🏓 ({latency}ms)")
+
+###############################################################
 def main():
     if not DISCORD_TOKEN:
         logging.error("❌ DISCORD_TOKEN이 설정되지 않았습니다! .env 파일을 확인하세요.")
