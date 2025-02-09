@@ -3,8 +3,6 @@ import discord
 from discord.ext import commands
 from config import DISCORD_TOKEN, DISCORD_CHANNEL_ID
 from twitter import init_twitter, start_tweet_loop
-from music import setup_music_commands
-import asyncio
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -18,14 +16,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     logging.info(f"✅ Bot logged in as {bot.user}")
 
-    # ✅ 1. 음악 명령어 등록
-    await setup_music_commands(bot)
-
-    # ✅ 2. 슬래시 명령어를 디스코드 서버에 동기화
+    # ✅ 1. 슬래시 명령어를 디스코드 서버에 동기화
     await bot.tree.sync()
     logging.info("✅ Slash commands synced")
 
-    # ✅ 3. 트위터 초기화 및 루프 시작
+    # ✅ 2. 트위터 초기화 및 루프 시작
     try:
         init_twitter()
         channel = bot.get_channel(int(DISCORD_CHANNEL_ID))
