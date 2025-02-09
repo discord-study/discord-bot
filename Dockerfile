@@ -1,10 +1,10 @@
-FROM --platform=linux/arm64/v8 arm64v8/python:3
+FROM python:3.11
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip3 install -r requirements.txt
-
 COPY index.py .
 COPY .env .
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 CMD ["python", "index.py"]
