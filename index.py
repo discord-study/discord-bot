@@ -1,5 +1,6 @@
 import logging
 import discord
+import time
 from discord.ext import commands
 import os
 from dotenv import load_dotenv
@@ -38,16 +39,16 @@ async def on_ready():
         logging.exception("❌ Twitter 초기화 실패, 봇을 종료합니다.")
         await bot.close()
 
-################ Ping-Pong 명령어 추가 #######################
-##############################################################
-##############################################################
+# ✅ Ping-Pong 명령어 추가
 @bot.command()
 async def ping(ctx):
-    """Ping을 입력하면 Pong!과 응답 속도를 반환합니다."""
-    latency = round(bot.latency * 1000)  # 밀리초 단위 변환
-    await ctx.send(f"Pong! 🏓 ({latency}ms)")
+    """실제 요청-응답(RTT) 기반 Ping 테스트"""
+    start_time = time.monotonic()  # 시작 시간 기록
+    message = await ctx.send("Pong! 🏓")  # 메시지 전송
+    end_time = time.monotonic()  # 응답 완료 시간 기록
+    latency = round((end_time - start_time) * 1000)  # 밀리초 변환
+    await message.edit(content=f"Pong! 🏓 ({latency}ms)")  # 응답 속도 업데이트
 
-###############################################################
 def main():
     if not DISCORD_TOKEN:
         logging.error("❌ DISCORD_TOKEN이 설정되지 않았습니다! .env 파일을 확인하세요.")
