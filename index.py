@@ -6,14 +6,6 @@ import random
 import requests
 from discord.ext import commands
 from dotenv import load_dotenv
-from twitter import init_twitter, start_tweet_loop
-from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-
 
 # 환경 변수 로드
 load_dotenv()
@@ -27,6 +19,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ✅ API 엔드포인트
+COUNT_API_URL = "https://nenekomashiro.com/image/list/count?code=999&search="
+POST_API_URL = "https://nenekomashiro.com/image/post?page={}&perPage=30&sort=0&code=999&search="
+IMAGE_BASE_URL = "https://nenekomashiro.com/"
 
 # ✅ 제외할 파일 리스트
 EXCLUDED_IMAGES = {
@@ -45,78 +42,52 @@ async def on_ready():
     await bot.tree.sync()
     logging.info("✅ Slash commands synced")
 
-    # ✅ 트위터 초기화 및 루프 시작
-    try:
-        init_twitter()
-        channel = bot.get_channel(int(DISCORD_CHANNEL_ID))
-        if channel:
-            start_tweet_loop(channel)
-        else:
-            logging.error("❌ 텍스트 채널을 찾을 수 없습니다. DISCORD_CHANNEL_ID를 확인하세요.")
-    except Exception as e:
-        logging.exception("❌ Twitter 초기화 실패, 봇을 종료합니다.")
-        await bot.close()
-
 # ✅ Ping-Pong 명령어
 @bot.command()
 async def ping(ctx):
-    """실제 요청-응답(RTT) 기반 Ping 테스트"""
-    start_time = time.monotonic()  # 시작 시간 기록
+    """Ping 테스트"""
+    start_time = time.monotonic()
     message = await ctx.send("🏓 Pong! 측정 중...")
-    end_time = time.monotonic()  # 응답 완료 시간 기록
+    end_time = time.monotonic()
+    latency = round((end_time - start_time) * 1000)
+    await message.edit(content=f"🏓 Pong! ({latency}ms)")
 
-    rtt_latency = round((end_time - start_time) * 1000)  # RTT 기반 핑 (밀리초 변환)
-    ws_latency = round(bot.latency * 1000)  # WebSocket 기반 핑 (밀리초 변환)
-
-    await message.edit(content=f"🏓 Pong! RTT: {rtt_latency}ms | WebSocket: {ws_latency}ms")
-
-# ✅ 이미지 크롤링 기능
+# ✅ API에서 이미지 크롤링
 @bot.command()
 async def imgcrawl(ctx):
-    """네코마시로 사이트에서 랜덤 이미지를 가져옵니다."""
-    url = "https://nenekomashiro.com/all"
-
-    # ✅ "이미지 생성 중..." 메시지 전송
-    loading_message = await ctx.send("🖼 이미지 생성 중...")
-
-    # ✅ Chrome 옵션 설정
-    options = Options()
-    options.add_argument("--headless")  # 브라우저 창 없이 실행
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-
-    # ✅ Chrome WebDriver 실행
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-
+    """네코마시로 사이트에서 전체 이미지 중 랜덤으로 1개 가져오기"""
     try:
-        driver.get(url)
-        time.sleep(3)  # 페이지 로드 대기 (JavaScript 실행 대기)
-
-        # ✅ 모든 이미지 태그 가져오기
-        images = driver.find_elements(By.TAG_NAME, "img")
-
-        # ✅ 'src' 속성이 있고 제외할 파일이 아닌 이미지 URL만 추출
-        image_urls = [
-            img.get_attribute("src") for img in images
-            if img.get_attribute("src") and 
-               "nenekomashiro.com" in img.get_attribute("src") and 
-               not any(excluded in img.get_attribute("src") for excluded in EXCLUDED_IMAGES)
-        ]
-
-        driver.quit()  # WebDriver 종료
-
-        if not image_urls:
-            await loading_message.edit(content="❌ 이미지를 찾을 수 없습니다.")
+        # ✅ 1️⃣ 전체 이미지 개수 가져오기
+        response = requests.get(COUNT_API_URL, timeout=10)
+        response.raise_for_status()
+        
+        total_images = int(response.text.strip())  # 숫자만 추출
+        if total_images == 0:
+            await ctx.send("❌ 이미지가 없습니다.")
             return
 
-        # ✅ 랜덤 이미지 선택 후 기존 메시지 수정
-        random_img = random.choice(image_urls)
-        await loading_message.edit(content=f"🖼 랜덤 이미지:\n{random_img}")
+        # ✅ 2️⃣ 랜덤 페이지 선택
+        total_pages = (total_images // 30) + 1  # 한 페이지당 30개
+        random_page = random.randint(1, total_pages)
 
-    except Exception as e:
-        await loading_message.edit(content=f"❌ 크롤링 중 오류 발생: {e}")
-        driver.quit()
+        # ✅ 3️⃣ 랜덤 페이지에서 이미지 가져오기
+        post_response = requests.get(POST_API_URL.format(random_page), timeout=10)
+        post_response.raise_for_status()
+
+        images = post_response.json().get("post", [])
+        if not images:
+            await ctx.send("❌ 이미지를 찾을 수 없습니다.")
+            return
+
+        # ✅ 4️⃣ 랜덤 이미지 선택
+        random_img_data = random.choice(images)
+        image_url = IMAGE_BASE_URL + random_img_data["src"]
+
+        # ✅ 5️⃣ 메시지 수정하여 이미지 출력
+        await ctx.send(f"🖼 랜덤 이미지:\n{image_url}")
+
+    except requests.exceptions.RequestException as e:
+        await ctx.send(f"❌ 크롤링 중 오류 발생: {e}")
 
 def main():
     if not DISCORD_TOKEN:
