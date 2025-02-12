@@ -4,13 +4,13 @@ import time
 import os
 import random
 import requests
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 # 환경 변수 로드
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
+DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -41,6 +41,7 @@ async def on_ready():
     logging.info(f"✅ Bot logged in as {bot.user}")
     await bot.tree.sync()
     logging.info("✅ Slash commands synced")
+    send_random_image.start()
 
 # ✅ Ping-Pong 명령어
 @bot.command()
@@ -52,43 +53,52 @@ async def ping(ctx):
     latency = round((end_time - start_time) * 1000)
     await message.edit(content=f"🏓 Pong! ({latency}ms)")
 
-# ✅ API에서 이미지 크롤링
+# ✅ API에서 랜덤 이미지 가져오기
+async def get_random_image():
+    try:
+        response = requests.get(COUNT_API_URL, timeout=10)
+        response.raise_for_status()
+        total_images = int(response.text.strip())
+        if total_images == 0:
+            return None
+
+        total_pages = (total_images // 30) + 1
+        random_page = random.randint(1, total_pages)
+
+        post_response = requests.get(POST_API_URL.format(random_page), timeout=10)
+        post_response.raise_for_status()
+        images = post_response.json().get("post", [])
+        if not images:
+            return None
+
+        random_img_data = random.choice(images)
+        return IMAGE_BASE_URL + random_img_data["src"]
+    except requests.exceptions.RequestException as e:
+        logging.error(f"❌ 크롤링 중 오류 발생: {e}")
+        return None
+
+# ✅ 이미지 크롤링 명령어
 @bot.command()
 async def imgcrawl(ctx):
     """네코마시로 사이트에서 전체 이미지 중 랜덤으로 1개 가져오기"""
-    try:
-        # ✅ 1️⃣ 전체 이미지 개수 가져오기
-        response = requests.get(COUNT_API_URL, timeout=10)
-        response.raise_for_status()
-        
-        total_images = int(response.text.strip())  # 숫자만 추출
-        if total_images == 0:
-            await ctx.send("❌ 이미지가 없습니다.")
-            return
+    image_url = await get_random_image()
+    if image_url:
+        await ctx.send(image_url)
+    else:
+        await ctx.send("❌ 이미지를 찾을 수 없습니다.")
 
-        # ✅ 2️⃣ 랜덤 페이지 선택
-        total_pages = (total_images // 30) + 1  # 한 페이지당 30개
-        random_page = random.randint(1, total_pages)
+# ✅ 매일 10시에 자동으로 이미지 보내기
+@tasks.loop(hours=24)
+async def send_random_image():
+    now = time.localtime()
+    if now.tm_hour == 10:
+        channel = bot.get_channel(DISCORD_CHANNEL_ID)
+        if channel:
+            image_url = await get_random_image()
+            if image_url:
+                await channel.send(image_url)
 
-        # ✅ 3️⃣ 랜덤 페이지에서 이미지 가져오기
-        post_response = requests.get(POST_API_URL.format(random_page), timeout=10)
-        post_response.raise_for_status()
-
-        images = post_response.json().get("post", [])
-        if not images:
-            await ctx.send("❌ 이미지를 찾을 수 없습니다.")
-            return
-
-        # ✅ 4️⃣ 랜덤 이미지 선택
-        random_img_data = random.choice(images)
-        image_url = IMAGE_BASE_URL + random_img_data["src"]
-
-        # ✅ 5️⃣ 메시지 수정하여 이미지 출력
-        await ctx.send(f"🖼 랜덤 이미지:\n{image_url}")
-
-    except requests.exceptions.RequestException as e:
-        await ctx.send(f"❌ 크롤링 중 오류 발생: {e}")
-
+# ✅ 봇 실행
 def main():
     if not DISCORD_TOKEN:
         logging.error("❌ DISCORD_TOKEN이 설정되지 않았습니다! .env 파일을 확인하세요.")
