@@ -1,11 +1,13 @@
 import logging
 import discord
-import time
+import asyncio
 import os
 import random
 import requests
+import time
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
+from datetime import datetime
 
 # 환경 변수 로드
 load_dotenv()
@@ -41,7 +43,8 @@ async def on_ready():
     logging.info(f"✅ Bot logged in as {bot.user}")
     await bot.tree.sync()
     logging.info("✅ Slash commands synced")
-    send_random_image.start()
+    if not send_random_image.is_running():
+        send_random_image.start()
 
 # ✅ Ping-Pong 명령어
 @bot.command()
@@ -88,10 +91,12 @@ async def imgcrawl(ctx):
         await ctx.send("❌ 이미지를 찾을 수 없습니다.")
 
 # ✅ 매일 10시에 자동으로 이미지 보내기
-@tasks.loop(hours=24)
+@tasks.loop(seconds=60)
 async def send_random_image():
-    now = time.localtime()
-    if now.tm_hour == 10:
+    await bot.wait_until_ready()
+    now = datetime.now()
+    if now.hour == 10 and now.minute == 0:
+        logging.info("🔔 10시가 되어 이미지 전송을 시작합니다.")
         channel = bot.get_channel(DISCORD_CHANNEL_ID)
         if channel:
             image_url = await get_random_image()
