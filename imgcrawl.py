@@ -60,7 +60,7 @@ class Imgcrawl(commands.Cog):
     async def send_random_image(self):
         await self.bot.wait_until_ready()
         now = datetime.now()
-        if now.hour == 10 and now.minute == 0:
+        if now.hour == 1 and now.minute == 0:
             logging.info("🔔 10시가 되어 이미지 전송을 시작합니다.")
             channel = self.bot.get_channel(DISCORD_CHANNEL_ID)
             if channel:
