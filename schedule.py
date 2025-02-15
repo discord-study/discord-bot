@@ -17,7 +17,8 @@ SCHEDULES_API_URL = "https://stellight.fans/api/v1/schedules?startDateTimeAfter=
 class Schedule(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.send_schedule.start()
+        self.stellars = self.get_stellars()  # 방송인 정보 캐싱
+        self.send_schedule.start()  # ✅ 여기서 tasks.loop를 시작하면 문제 해결됨
 
     # ✅ 방송인 정보 가져오기
     def get_stellars(self):
@@ -37,18 +38,46 @@ class Schedule(commands.Cog):
         return []
 
     # ✅ 일정 메시지 포맷
-    def format_schedule_message(self, schedules, stellars):
+    def format_schedule_message(self, schedules):
         if not schedules:
             return "📢 오늘 예정된 방송이 없습니다."
 
         message = "**📅 오늘의 방송 일정**\n"
+        schedule_dict = {}
+
         for schedule in schedules:
-            name = stellars.get(schedule["stellarId"], "알 수 없음")
+            name = self.stellars.get(schedule["stellarId"], "알 수 없음")
             time = datetime.fromisoformat(schedule["startDateTime"]).strftime("%H:%M")
-            message += f"🕒 `{time}` | **{name}** - {schedule['title']}\n"
+            title = schedule["title"]
+
+            # 🚨 "휴방" 일정이 있으면, 같은 사람의 다른 일정 제거
+            if name in schedule_dict and "휴방" in schedule_dict[name]["titles"]:
+                continue
+
+            # 🚨 "휴방" 일정이 먼저 나오면 덮어쓰기
+            if "휴방" in title:
+                schedule_dict[name] = {"time": time, "titles": ["휴방"]}
+                continue
+
+            # 🚨 "방송 예정"이 여러 개 나오지 않도록 방지
+            if "방송 예정" in title:
+                if name in schedule_dict and any("방송 예정" in t for t in schedule_dict[name]["titles"]):
+                    continue
+
+            # ✅ 방송 일정 저장
+            if name not in schedule_dict:
+                schedule_dict[name] = {"time": time, "titles": []}
+            
+            schedule_dict[name]["titles"].append(title)
+
+        # ✅ 메시지 생성
+        for name, info in schedule_dict.items():
+            joined_titles = ", ".join(info["titles"])
+            message += f"🕒 `{info['time']}` | **{name}** - {joined_titles}\n"
+
         return message
 
-    # ✅ 자동으로 방송 일정 전송
+    # ✅ 자동으로 방송 일정 전송 (self 사용 X)
     @tasks.loop(minutes=1)
     async def send_schedule(self):
         await self.bot.wait_until_ready()
@@ -57,18 +86,16 @@ class Schedule(commands.Cog):
             logging.info("🔔 10시가 되어 방송 일정을 전송합니다.")
             channel = self.bot.get_channel(DISCORD_CHANNEL_ID)
             if channel:
-                stellars = self.get_stellars()
                 schedules = self.get_schedules(now)
-                message = self.format_schedule_message(schedules, stellars)
+                message = self.format_schedule_message(schedules)
                 await channel.send(message)
 
     # ✅ !schedule 명령어 추가
     @commands.command(name="schedule")
     async def show_schedule(self, ctx):
         """오늘의 방송 일정을 수동으로 확인합니다."""
-        stellars = self.get_stellars()
         schedules = self.get_schedules(datetime.now())
-        message = self.format_schedule_message(schedules, stellars)
+        message = self.format_schedule_message(schedules)
         await ctx.send(message)
 
 # ✅ Cog 등록
