@@ -53,7 +53,7 @@ class Schedule(commands.Cog):
     async def send_schedule(self):
         await self.bot.wait_until_ready()
         now = datetime.now()
-        if now.hour == 1 and now.minute == 0:
+        if now.hour == 10 and now.minute == 0:
             logging.info("🔔 10시가 되어 방송 일정을 전송합니다.")
             channel = self.bot.get_channel(DISCORD_CHANNEL_ID)
             if channel:
