@@ -1,3 +1,4 @@
+# index.py
 import logging
 import discord
 import os
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 
 # 로깅 설정을 먼저 구성 - 콘솔과 파일에 모두 로깅
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler("bot.log", encoding="utf-8"),
@@ -36,8 +37,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ✅ 확장 로드 (비동기 방식 적용)
 async def load_extensions():
     # 기본 확장 모듈
-    extensions = ["schedule", "imgcrawl", "twitter"]
-    
+    extensions = ["schedule", "imgcrawl", "twitter", "youtube"]  # "youtube" 추가
+
     # 확장 모듈 로드 시도
     failed_extensions = []
     for ext in extensions:
@@ -47,7 +48,7 @@ async def load_extensions():
         except Exception as e:
             failed_extensions.append(ext)
             logging.error(f"❌ {ext}.py 로드 실패: {e}")
-    
+
     # 실패한 모듈이 있는 경우 경고
     if failed_extensions:
         logging.warning(f"⚠️ 다음 확장 모듈을 로드하지 못했습니다: {', '.join(failed_extensions)}")
@@ -58,12 +59,12 @@ async def load_extensions():
 async def on_ready():
     # 봇이 준비된 후에 확장 모듈 로드
     logging.info(f"✅ Bot logged in as {bot.user}")
-    
+
     # 확장 모듈 로드
     success = await load_extensions()
     if success:
         logging.info("✅ 모든 확장 모듈이 성공적으로 로드되었습니다.")
-    
+
     # 슬래시 명령어 동기화
     try:
         await bot.tree.sync()
