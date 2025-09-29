@@ -201,25 +201,21 @@ class Twitter(commands.Cog):
         try:
             await interaction.response.defer()
 
-            await interaction.followup.send("🔍 Twitter API 연결 상태를 확인합니다...")
+            await interaction.followup.send("Twitter API 연결 상태를 확인합니다...")
 
             # 초기화 확인
             init_success = await self.init_twitter()
 
-            debug_msg = f"""**🔍 Twitter 디버그 정보**
-🔑 사용자명: {TWITTER_USERNAME}
-👤 사용자 ID: {self.user_id or '없음'}
-🆔 최신 트윗 ID: {self.latest_tweet_id or '없음'}
-📍 알림 채널: <#{TWITTER_NOTIFY_CHANNEL_ID}>
-✅ 초기화 상태: {'성공' if init_success else '실패'}
-🕒 현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+            debug_msg = f"""**Twitter 디버그 정보**
+초기화 상태: {'성공' if init_success else '실패'}
+현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
 
             await interaction.followup.send(debug_msg)
 
             if init_success:
-                await interaction.followup.send("✅ Twitter API 연결이 정상적으로 작동합니다.")
+                await interaction.followup.send("Twitter API 연결이 정상적으로 작동합니다.")
             else:
-                await interaction.followup.send("❌ Twitter API 연결에 문제가 있습니다. Bearer 토큰을 확인하세요.")
+                await interaction.followup.send("Twitter API 연결에 문제가 있습니다. Bearer 토큰을 확인하세요.")
 
         except Exception as e:
             logger.error(f"❌ Twitter 디버그 명령어 실행 중 오류: {e}")

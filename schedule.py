@@ -218,7 +218,7 @@ class Schedule(commands.Cog):
         try:
             await interaction.response.defer()
 
-            await interaction.followup.send("🔍 API 연결 상태를 확인합니다...")
+            await interaction.followup.send("API 연결 상태를 확인합니다...")
 
             # 스텔라 정보 확인
             stellars = await self.get_stellars()
@@ -228,12 +228,11 @@ class Schedule(commands.Cog):
             schedules = await self.get_schedules(datetime.now())
             schedule_count = len(schedules)
 
-            debug_msg = f"""**🔍 스케줄 디버그 정보**
-📊 스텔라 정보: {stellar_count}명 로드됨
-📅 오늘 일정: {schedule_count}개 발견됨
-🕒 현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-📍 알림 채널: <#{DISCORD_CHANNEL_ID}>
-💾 캐시 상태: {'유효' if self.stellars_cache_time else '없음'}"""
+            debug_msg = f"""**스케줄 디버그 정보**
+스텔라 정보: {stellar_count}명 로드됨
+오늘 일정: {schedule_count}개 발견됨
+현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+캐시 상태: {'유효' if self.stellars_cache_time else '없음'}"""
 
             await interaction.followup.send(debug_msg)
 

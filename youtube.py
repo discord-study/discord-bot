@@ -159,24 +159,21 @@ class YouTube(commands.Cog):
         try:
             await interaction.response.defer()
 
-            await interaction.followup.send("🔍 YouTube API 연결 상태를 확인합니다...")
+            await interaction.followup.send("YouTube API 연결 상태를 확인합니다...")
 
             init_success = self.init_youtube_client()
 
-            debug_msg = f"""**🔍 YouTube 디버그 정보**
-🔑 API 키: {'설정됨' if YOUTUBE_API_KEY else '없음'}
-📺 채널 ID: {YOUTUBE_CHANNEL_ID or '없음'}
-🆔 최신 동영상 ID: {self.latest_video_id or '없음'}
-📍 알림 채널: <#{self.discord_channel_id}>
-✅ 초기화 상태: {'성공' if init_success else '실패'}
-🕒 현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+            debug_msg = f"""**YouTube 디버그 정보**
+API 키: {'설정됨' if YOUTUBE_API_KEY else '없음'}
+초기화 상태: {'성공' if init_success else '실패'}
+현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
 
             await interaction.followup.send(debug_msg)
 
             if init_success:
-                await interaction.followup.send("✅ YouTube API 연결이 정상적으로 작동합니다.")
+                await interaction.followup.send("YouTube API 연결이 정상적으로 작동합니다.")
             else:
-                await interaction.followup.send("❌ YouTube API 연결에 문제가 있습니다. API 키를 확인하세요.")
+                await interaction.followup.send("YouTube API 연결에 문제가 있습니다. API 키를 확인하세요.")
 
         except Exception as e:
             logger.error(f"❌ YouTube 디버그 명령어 실행 중 오류: {e}")
