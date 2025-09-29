@@ -1,179 +1,227 @@
 import discord
-from discord.ext import commands, tasks
 import tweepy
 import logging
 import asyncio
-import functools
-import datetime
-# 변수명 일치시키기
+import aiohttp
+import json
+from datetime import datetime, timedelta
+from discord.ext import commands, tasks
+from typing import Optional
 from config import BEARER_TOKEN as TWITTER_BEARER_TOKEN
 from config import TWITTER_USERNAME
 from config import DISCORD_CHANNEL_ID as TWITTER_NOTIFY_CHANNEL_ID
 
+# 로깅 설정
+logger = logging.getLogger(__name__)
+
 class Twitter(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.client_v2 = None
-        self.user_id = None
-        self.latest_tweet_id = None
-        self.notify_channel = None
+        self.user_id: Optional[str] = None
+        self.latest_tweet_id: Optional[str] = None
+        self.notify_channel: Optional[discord.TextChannel] = None
+        self.last_check_time: Optional[datetime] = None
         self.check_tweets.start()
-    
-    def init_twitter(self):
-        """트위터 클라이언트 초기화"""
-        try:
-            # 타임아웃 및 rate limit 처리 개선
-            self.client_v2 = tweepy.Client(
-                bearer_token=TWITTER_BEARER_TOKEN, 
-                wait_on_rate_limit=True
-            )
-            
-            # 타임아웃 시간 증가
-            self.client_v2.session.request = functools.partial(
-                self.client_v2.session.request, 
-                timeout=30  # 30초 타임아웃으로 증가
-            )
-            
-            # 사용자 ID 가져오기
-            try:
-                user_data = self.client_v2.get_user(username=TWITTER_USERNAME)
-                if user_data and user_data.data:
-                    self.user_id = user_data.data.id
-                    logging.info(f"✅ Twitter user id for {TWITTER_USERNAME}: {self.user_id}")
-                    return True
-                else:
-                    logging.error(f"❌ Twitter 사용자를 찾을 수 없음: {TWITTER_USERNAME}")
-                    return False
-            except Exception as e:
-                logging.error(f"❌ Twitter 사용자 ID 가져오기 실패: {e}")
-                return False
-        except Exception as e:
-            logging.error(f"❌ Twitter 클라이언트 초기화 실패: {e}")
-            return False
 
-    @tasks.loop(minutes=15.0)  # 5분에서 15분으로 증가하여 API 요청 빈도 감소
+    async def cog_unload(self):
+        """Cog 언로드 시 정리"""
+        self.check_tweets.cancel()
+
+    async def init_twitter(self) -> bool:
+        """트위터 사용자 ID 초기화"""
+        if self.user_id:
+            return True
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {TWITTER_BEARER_TOKEN}",
+                "User-Agent": "DiscordBot/1.0"
+            }
+
+            url = f"https://api.twitter.com/2/users/by/username/{TWITTER_USERNAME}"
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if "data" in data:
+                            self.user_id = data["data"]["id"]
+                            logger.info(f"✅ Twitter 사용자 ID 초기화: {TWITTER_USERNAME} → {self.user_id}")
+                            return True
+                        else:
+                            logger.error(f"❌ 사용자 데이터가 없습니다: {TWITTER_USERNAME}")
+                    elif response.status == 401:
+                        logger.error("❌ Twitter API 인증 실패 - Bearer 토큰을 확인하세요")
+                    elif response.status == 429:
+                        logger.warning("❌ Twitter API Rate Limit 초과")
+                    else:
+                        logger.error(f"❌ Twitter API 오류: {response.status}")
+
+        except asyncio.TimeoutError:
+            logger.error("❌ Twitter API 연결 타임아웃")
+        except aiohttp.ClientError as e:
+            logger.error(f"❌ Twitter API 연결 오류: {e}")
+        except Exception as e:
+            logger.error(f"❌ Twitter 초기화 중 예상치 못한 오류: {e}")
+
+        return False
+
+    @tasks.loop(minutes=10.0)
     async def check_tweets(self):
         """주기적으로 새 트윗 확인"""
-        if not self.user_id or not self.client_v2:
-            if not self.init_twitter():
-                logging.warning("Twitter API 연결이 불가능합니다. 다음 시도까지 대기합니다.")
-                return
-        
+        await self.bot.wait_until_ready()
+
+        # 초기화 확인
+        if not await self.init_twitter():
+            logger.warning("Twitter API 초기화 실패. 다음 시도까지 대기합니다.")
+            return
+
+        # 알림 채널 설정
         if not self.notify_channel:
             try:
-                channel_id = int(TWITTER_NOTIFY_CHANNEL_ID)
-                channel = self.bot.get_channel(channel_id)
-                if channel:
-                    self.notify_channel = channel
-                else:
-                    logging.warning(f"❌ 알림 채널을 찾을 수 없음: {channel_id}")
+                self.notify_channel = self.bot.get_channel(TWITTER_NOTIFY_CHANNEL_ID)
+                if not self.notify_channel:
+                    logger.error(f"❌ 알림 채널을 찾을 수 없음: {TWITTER_NOTIFY_CHANNEL_ID}")
                     return
-            except ValueError:
-                logging.error(f"❌ 유효하지 않은 채널 ID: {TWITTER_NOTIFY_CHANNEL_ID}")
+            except Exception as e:
+                logger.error(f"❌ 채널 설정 오류: {e}")
                 return
-        
+
         try:
-            # API 요청 파라미터 수정
-            params = {
-                "id": self.user_id,
-                "exclude": "retweets,replies",
-                # tweet.fields 파라미터 수정 - 주의: API 버전에 따라 이 부분이 동작하지 않을 수 있음
-                "expansions": "author_id",  # tweet.fields 대신 다른 파라미터 사용
-                "max_results": 5  # 결과 수 감소
+            await self._fetch_and_process_tweets()
+
+        except Exception as e:
+            logger.error(f"❌ 트윗 확인 중 예상치 못한 오류: {e}")
+
+    async def _fetch_and_process_tweets(self):
+        """트윗 가져오기 및 처리"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {TWITTER_BEARER_TOKEN}",
+                "User-Agent": "DiscordBot/1.0"
             }
-            
-            # 이전에 저장된 tweet_id가 있으면 since_id 파라미터 추가
+
+            # API 파라미터 설정
+            params = {
+                "max_results": "5",
+                "exclude": "retweets,replies",
+                "tweet.fields": "created_at,public_metrics"
+            }
+
             if self.latest_tweet_id:
                 params["since_id"] = self.latest_tweet_id
-            
-            # 타임아웃과 함께 API 호출
-            try:
-                # API 호출을 실행 대기열에 제출
-                loop = asyncio.get_event_loop()
-                tweets_future = loop.run_in_executor(
-                    None,
-                    lambda: self.client_v2.get_users_tweets(**params)
-                )
-                
-                # 타임아웃 시간 증가
-                tweets = await asyncio.wait_for(tweets_future, timeout=30.0)
-                
-                # 트윗 데이터 처리
-                if not tweets.data:
-                    logging.info("새로운 트윗이 없습니다.")
-                    return
-                
-                # 첫 실행이면 최신 트윗 ID만 저장하고 알림은 보내지 않음
-                if not self.latest_tweet_id:
-                    self.latest_tweet_id = tweets.data[0].id
-                    logging.info(f"✅ 첫 실행: 최신 트윗 ID({self.latest_tweet_id})를 저장했습니다.")
-                    return
-                
-                # 여러 트윗을 처리하기 위해 정렬 (오래된 것부터 처리)
-                sorted_tweets = sorted(tweets.data, key=lambda tweet: tweet.id)
-                
-                for tweet in sorted_tweets:
-                    # 트윗 ID가 이미 처리한 ID보다 큰 경우만 처리
-                    if tweet.id <= self.latest_tweet_id:
-                        continue
-                        
-                    # 트윗 URL 생성
-                    tweet_url = f"https://twitter.com/{TWITTER_USERNAME}/status/{tweet.id}"
-                    
-                    # 알림 임베드 생성
-                    embed = discord.Embed(
-                        title=f"{TWITTER_USERNAME}님의 새 트윗",
-                        description=tweet.text,
-                        color=0x1DA1F2,
-                        url=tweet_url
-                    )
-                    
-                    # 생성 시간 정보가 있는 경우에만 처리
-                    try:
-                        if hasattr(tweet, 'created_at'):
-                            created_at = tweet.created_at
-                            korean_time = created_at + datetime.timedelta(hours=9)
-                            time_str = korean_time.strftime("%Y-%m-%d %H:%M:%S")
-                            embed.set_footer(text=f"작성 시간: {time_str}")
-                    except AttributeError:
-                        # 생성 시간 정보가 없으면 현재 시간 사용
-                        now = datetime.datetime.now()
-                        embed.set_footer(text=f"알림 시간: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-                    
-                    await self.notify_channel.send(embed=embed)
-                    logging.info(f"✅ 새 트윗 알림 전송 완료: {tweet.id}")
-                    
-                    # 처리한 트윗 ID 업데이트
-                    self.latest_tweet_id = tweet.id
-                
-            except asyncio.TimeoutError:
-                logging.warning("⏱️ Twitter API 요청 타임아웃. 다음 시도에서 재시도합니다.")
-                return
-            except tweepy.TooManyRequests as e:
-                # Rate limit에 걸렸을 때 자동으로 대기하도록 설정
-                retry_after = getattr(e, 'retry_after', 300)  # 기본값 5분
-                logging.warning(f"❌ Rate limit exceeded. Waiting for {retry_after} seconds.")
-                # 봇 실행을 멈추지 않기 위해 sleep은 사용하지 않음
-                return
-            except Exception as e:
-                logging.error(f"❌ 트윗 가져오기 오류: {e}")
-                # 네트워크 문제로 클라이언트 재설정
-                self.client_v2 = None
-                return
-                
+
+            url = f"https://api.twitter.com/2/users/{self.user_id}/tweets"
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+                async with session.get(url, headers=headers, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        await self._process_tweets_data(data)
+
+                    elif response.status == 401:
+                        logger.error("❌ Twitter API 인증 실패")
+                    elif response.status == 429:
+                        logger.warning("❌ Twitter API Rate Limit 초과")
+                    else:
+                        logger.error(f"❌ Twitter API 오류: {response.status}")
+                        error_text = await response.text()
+                        logger.error(f"응답 내용: {error_text}")
+
+        except asyncio.TimeoutError:
+            logger.error("❌ Twitter API 요청 타임아웃")
+        except aiohttp.ClientError as e:
+            logger.error(f"❌ Twitter API 연결 오류: {e}")
         except Exception as e:
-            logging.error(f"❌ 트윗 확인 중 예상치 못한 오류: {e}")
-            
-    @check_tweets.before_loop
-    async def before_check_tweets(self):
-        """봇이 준비될 때까지 대기"""
-        await self.bot.wait_until_ready()
-        logging.info("✅ Twitter 모니터링 시작")
-        self.init_twitter()
-    
-    def cog_unload(self):
-        """Cog가 언로드될 때 task 정리"""
-        self.check_tweets.cancel()
+            logger.error(f"❌ 트윗 가져오기 중 오류: {e}")
+
+    async def _process_tweets_data(self, data: dict):
+        """트윗 데이터 처리"""
+        try:
+            if "data" not in data or not data["data"]:
+                logger.info("새로운 트윗이 없습니다.")
+                return
+
+            tweets = data["data"]
+
+            # 첫 실행시 최신 트윗 ID만 저장
+            if not self.latest_tweet_id:
+                self.latest_tweet_id = tweets[0]["id"]
+                logger.info(f"✅ 첫 실행: 최신 트윗 ID({self.latest_tweet_id}) 저장")
+                return
+
+            # 오래된 트윗부터 처리
+            sorted_tweets = sorted(tweets, key=lambda t: t["id"])
+
+            for tweet in sorted_tweets:
+                if int(tweet["id"]) <= int(self.latest_tweet_id):
+                    continue
+
+                await self._send_tweet_notification(tweet)
+                self.latest_tweet_id = tweet["id"]
+
+        except Exception as e:
+            logger.error(f"❌ 트윗 데이터 처리 중 오류: {e}")
+
+    async def _send_tweet_notification(self, tweet: dict):
+        """트윗 알림 전송"""
+        try:
+            tweet_id = tweet["id"]
+            tweet_text = tweet["text"]
+            tweet_url = f"https://twitter.com/{TWITTER_USERNAME}/status/{tweet_id}"
+
+            embed = discord.Embed(
+                title=f"{TWITTER_USERNAME}님의 새 트윗",
+                description=tweet_text,
+                color=0x1DA1F2,
+                url=tweet_url
+            )
+
+            # 생성 시간 처리
+            if "created_at" in tweet:
+                try:
+                    created_at = datetime.fromisoformat(tweet["created_at"].replace("Z", "+00:00"))
+                    korean_time = created_at + timedelta(hours=9)
+                    time_str = korean_time.strftime("%Y-%m-%d %H:%M:%S")
+                    embed.set_footer(text=f"작성 시간: {time_str}")
+                except Exception as e:
+                    logger.warning(f"시간 파싱 오류: {e}")
+
+            await self.notify_channel.send(embed=embed)
+            logger.info(f"✅ 새 트윗 알림 전송 완료: {tweet_id}")
+
+        except discord.HTTPException as e:
+            logger.error(f"❌ Discord 메시지 전송 오류: {e}")
+        except Exception as e:
+            logger.error(f"❌ 트윗 알림 전송 중 오류: {e}")
+
+    @commands.command(name="twitter_debug")
+    async def debug_twitter(self, ctx):
+        """트위터 디버깅용 명령어"""
+        try:
+            await ctx.send("🔍 Twitter API 연결 상태를 확인합니다...")
+
+            # 초기화 확인
+            init_success = await self.init_twitter()
+
+            debug_msg = f"""**🔍 Twitter 디버그 정보**
+🔑 사용자명: {TWITTER_USERNAME}
+👤 사용자 ID: {self.user_id or '없음'}
+🆔 최신 트윗 ID: {self.latest_tweet_id or '없음'}
+📍 알림 채널: <#{TWITTER_NOTIFY_CHANNEL_ID}>
+✅ 초기화 상태: {'성공' if init_success else '실패'}
+🕒 현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+
+            await ctx.send(debug_msg)
+
+            if init_success:
+                await ctx.send("✅ Twitter API 연결이 정상적으로 작동합니다.")
+            else:
+                await ctx.send("❌ Twitter API 연결에 문제가 있습니다. Bearer 토큰을 확인하세요.")
+
+        except Exception as e:
+            logger.error(f"❌ Twitter 디버그 명령어 실행 중 오류: {e}")
+            await ctx.send(f"❌ 디버그 실행 중 오류: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(Twitter(bot))
