@@ -50,6 +50,10 @@ async def load_extensions():
     # 확장 모듈 로드 시도
     failed_extensions = []
     for ext in extensions:
+        if ext in bot.extensions:
+            logger.info(f"⚠️ {ext}.py 이미 로드되어 건너뜁니다.")
+            continue
+
         try:
             await bot.load_extension(ext)
             logger.info(f"✅ {ext}.py 로드 완료")
@@ -64,16 +68,18 @@ async def load_extensions():
     return True
 
 @bot.event
-async def on_ready():
-    """봇이 준비되었을 때 실행"""
-    logger.info(f"✅ Bot logged in as {bot.user}")
-
-    # 확장 모듈 로드
+async def setup_hook():
+    """봇이 로그인하기 전에 확장 모듈을 한 번만 로드"""
     success = await load_extensions()
     if success:
         logger.info("✅ 모든 확장 모듈이 성공적으로 로드되었습니다.")
 
-    # 슬래시 명령어 동기화
+@bot.event
+async def on_ready():
+    """봇이 준비되었을 때 실행"""
+    logger.info(f"✅ Bot logged in as {bot.user}")
+
+    # 슬래시 명령어 동기화 (재연결 시에도 실행)
     try:
         await bot.tree.sync()
         logger.info("✅ Slash commands synced")
@@ -98,15 +104,15 @@ async def on_command_error(ctx, error):
         logger.error(f"❌ 명령어 '{ctx.command}' 실행 중 오류: {error}", exc_info=True)
         await ctx.send("❌ 명령어 실행 중 오류가 발생했습니다.")
 
-# 기본 명령어 정의
-@bot.command()
-async def ping(ctx):
+# 기본 슬래시 명령어 정의
+@bot.tree.command(name="ping", description="봇의 응답 시간을 확인합니다")
+async def ping(interaction: discord.Interaction):
     """Ping 테스트"""
     start_time = time.monotonic()
-    message = await ctx.send("🏓 Pong! 측정 중...")
+    await interaction.response.send_message("🏓 Pong! 측정 중...")
     end_time = time.monotonic()
     latency = round((end_time - start_time) * 1000)
-    await message.edit(content=f"🏓 Pong! ({latency}ms)")
+    await interaction.edit_original_response(content=f"🏓 Pong! ({latency}ms)")
 
 # ✅ 봇 실행
 async def main():

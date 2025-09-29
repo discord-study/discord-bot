@@ -186,30 +186,39 @@ class Schedule(commands.Cog):
             except Exception as e:
                 logger.error(f"❌ 방송 일정 자동 전송 중 오류: {e}")
 
-    @commands.command(name="schedule")
-    async def show_schedule(self, ctx):
+    @discord.app_commands.command(name="schedule", description="오늘의 방송 일정을 확인합니다")
+    async def show_schedule(self, interaction: discord.Interaction):
         """오늘의 방송 일정을 수동으로 확인합니다."""
         try:
-            async with ctx.typing():
-                stellars = await self.get_stellars()
-                schedules = await self.get_schedules(datetime.now())
-                message = self.format_schedule_message(schedules, stellars)
+            await interaction.response.defer()
 
-            await ctx.send(message)
-            logger.info(f"✅ 수동 일정 조회 완료 - 사용자: {ctx.author}")
+            stellars = await self.get_stellars()
+            schedules = await self.get_schedules(datetime.now())
+            message = self.format_schedule_message(schedules, stellars)
+
+            await interaction.followup.send(message)
+            logger.info(f"✅ 수동 일정 조회 완료 - 사용자: {interaction.user}")
 
         except discord.HTTPException as e:
             logger.error(f"❌ Discord 메시지 전송 오류: {e}")
-            await ctx.send("❌ 메시지 전송 중 오류가 발생했습니다.")
+            if interaction.response.is_done():
+                await interaction.followup.send("❌ 메시지 전송 중 오류가 발생했습니다.")
+            else:
+                await interaction.response.send_message("❌ 메시지 전송 중 오류가 발생했습니다.")
         except Exception as e:
             logger.error(f"❌ 수동 일정 조회 중 오류: {e}")
-            await ctx.send("❌ 일정을 조회하는 중 오류가 발생했습니다.")
+            if interaction.response.is_done():
+                await interaction.followup.send("❌ 일정을 조회하는 중 오류가 발생했습니다.")
+            else:
+                await interaction.response.send_message("❌ 일정을 조회하는 중 오류가 발생했습니다.")
 
-    @commands.command(name="schedule_debug")
-    async def debug_schedule(self, ctx):
+    @discord.app_commands.command(name="schedule_debug", description="스케줄 API 연결 상태를 디버깅합니다")
+    async def debug_schedule(self, interaction: discord.Interaction):
         """스케줄 디버깅용 명령어"""
         try:
-            await ctx.send("🔍 API 연결 상태를 확인합니다...")
+            await interaction.response.defer()
+
+            await interaction.followup.send("🔍 API 연결 상태를 확인합니다...")
 
             # 스텔라 정보 확인
             stellars = await self.get_stellars()
@@ -226,7 +235,7 @@ class Schedule(commands.Cog):
 📍 알림 채널: <#{DISCORD_CHANNEL_ID}>
 💾 캐시 상태: {'유효' if self.stellars_cache_time else '없음'}"""
 
-            await ctx.send(debug_msg)
+            await interaction.followup.send(debug_msg)
 
             if schedule_count > 0:
                 # 샘플 일정 데이터 표시 (첫 번째 일정)
@@ -243,18 +252,21 @@ class Schedule(commands.Cog):
                 }
 
                 sample_msg = f"**샘플 일정 데이터:**\n```json\n{sample_info}\n```"
-                await ctx.send(sample_msg)
+                await interaction.followup.send(sample_msg)
 
                 # 실제 포맷 메시지도 테스트
                 test_message = self.format_schedule_message(schedules, stellars)
                 if len(test_message) > 1900:  # Discord 메시지 길이 제한 고려
                     test_message = test_message[:1900] + "..."
 
-                await ctx.send(f"**포맷된 메시지 미리보기:**\n{test_message}")
+                await interaction.followup.send(f"**포맷된 메시지 미리보기:**\n{test_message}")
 
         except Exception as e:
             logger.error(f"❌ 디버그 명령어 실행 중 오류: {e}")
-            await ctx.send(f"❌ 디버그 실행 중 오류: {str(e)}")
+            if interaction.response.is_done():
+                await interaction.followup.send(f"❌ 디버그 실행 중 오류: {str(e)}")
+            else:
+                await interaction.response.send_message(f"❌ 디버그 실행 중 오류: {str(e)}")
 
 # ✅ Cog 등록
 async def setup(bot):

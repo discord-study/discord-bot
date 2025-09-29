@@ -153,11 +153,13 @@ class YouTube(commands.Cog):
         except Exception as e:
             logger.error(f"❌ YouTube 알림 전송 중 오류: {e}")
 
-    @commands.command(name="youtube_debug")
-    async def debug_youtube(self, ctx):
+    @discord.app_commands.command(name="youtube_debug", description="YouTube API 연결 상태를 디버깅합니다")
+    async def debug_youtube(self, interaction: discord.Interaction):
         """YouTube 디버깅용 명령어"""
         try:
-            await ctx.send("🔍 YouTube API 연결 상태를 확인합니다...")
+            await interaction.response.defer()
+
+            await interaction.followup.send("🔍 YouTube API 연결 상태를 확인합니다...")
 
             init_success = self.init_youtube_client()
 
@@ -169,16 +171,19 @@ class YouTube(commands.Cog):
 ✅ 초기화 상태: {'성공' if init_success else '실패'}
 🕒 현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
 
-            await ctx.send(debug_msg)
+            await interaction.followup.send(debug_msg)
 
             if init_success:
-                await ctx.send("✅ YouTube API 연결이 정상적으로 작동합니다.")
+                await interaction.followup.send("✅ YouTube API 연결이 정상적으로 작동합니다.")
             else:
-                await ctx.send("❌ YouTube API 연결에 문제가 있습니다. API 키를 확인하세요.")
+                await interaction.followup.send("❌ YouTube API 연결에 문제가 있습니다. API 키를 확인하세요.")
 
         except Exception as e:
             logger.error(f"❌ YouTube 디버그 명령어 실행 중 오류: {e}")
-            await ctx.send(f"❌ 디버그 실행 중 오류: {str(e)}")
+            if interaction.response.is_done():
+                await interaction.followup.send(f"❌ 디버그 실행 중 오류: {str(e)}")
+            else:
+                await interaction.response.send_message(f"❌ 디버그 실행 중 오류: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(YouTube(bot))

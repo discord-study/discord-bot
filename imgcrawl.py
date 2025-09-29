@@ -45,15 +45,17 @@ class Imgcrawl(commands.Cog):
             logging.error(f"❌ 크롤링 중 오류 발생: {e}")
             return None
 
-    # ✅ !imgcrawl 명령어
-    @commands.command()
-    async def imgcrawl(self, ctx):
+    # ✅ /imgcrawl 슬래시 명령어
+    @discord.app_commands.command(name="imgcrawl", description="네코마시로 사이트에서 랜덤 이미지를 가져옵니다")
+    async def imgcrawl(self, interaction: discord.Interaction):
         """네코마시로 사이트에서 전체 이미지 중 랜덤으로 1개 가져오기"""
+        await interaction.response.defer()
+
         image_url = await self.get_random_image()
         if image_url:
-            await ctx.send(image_url)
+            await interaction.followup.send(image_url)
         else:
-            await ctx.send("❌ 이미지를 찾을 수 없습니다.")
+            await interaction.followup.send("❌ 이미지를 찾을 수 없습니다.")
 
     # ✅ 매일 10시에 자동으로 이미지 보내기
     @tasks.loop(minutes=1)

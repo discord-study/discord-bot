@@ -195,11 +195,13 @@ class Twitter(commands.Cog):
         except Exception as e:
             logger.error(f"❌ 트윗 알림 전송 중 오류: {e}")
 
-    @commands.command(name="twitter_debug")
-    async def debug_twitter(self, ctx):
+    @discord.app_commands.command(name="twitter_debug", description="Twitter API 연결 상태를 디버깅합니다")
+    async def debug_twitter(self, interaction: discord.Interaction):
         """트위터 디버깅용 명령어"""
         try:
-            await ctx.send("🔍 Twitter API 연결 상태를 확인합니다...")
+            await interaction.response.defer()
+
+            await interaction.followup.send("🔍 Twitter API 연결 상태를 확인합니다...")
 
             # 초기화 확인
             init_success = await self.init_twitter()
@@ -212,16 +214,19 @@ class Twitter(commands.Cog):
 ✅ 초기화 상태: {'성공' if init_success else '실패'}
 🕒 현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
 
-            await ctx.send(debug_msg)
+            await interaction.followup.send(debug_msg)
 
             if init_success:
-                await ctx.send("✅ Twitter API 연결이 정상적으로 작동합니다.")
+                await interaction.followup.send("✅ Twitter API 연결이 정상적으로 작동합니다.")
             else:
-                await ctx.send("❌ Twitter API 연결에 문제가 있습니다. Bearer 토큰을 확인하세요.")
+                await interaction.followup.send("❌ Twitter API 연결에 문제가 있습니다. Bearer 토큰을 확인하세요.")
 
         except Exception as e:
             logger.error(f"❌ Twitter 디버그 명령어 실행 중 오류: {e}")
-            await ctx.send(f"❌ 디버그 실행 중 오류: {str(e)}")
+            if interaction.response.is_done():
+                await interaction.followup.send(f"❌ 디버그 실행 중 오류: {str(e)}")
+            else:
+                await interaction.response.send_message(f"❌ 디버그 실행 중 오류: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(Twitter(bot))
